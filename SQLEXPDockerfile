@@ -1,0 +1,32 @@
+FROM mcr.microsoft.com/windows/servercore:1803
+#copy the install package 
+COPY SQLEXPR_x64_ENU \Source
+copy start.ps1  \Source
+ENV sa_password="devops@2019" \
+    attach_dbs="[{'dbName': 'northwnd','dbFiles': [''C:\\MSSQL\DATA\northwnd.mdf','C:\\MSSQL\DATA\northwnd.ldf'']}]" \
+    ACCEPT_EULA="Y" \
+    sa_password_path="C:\ProgramData\Docker\secrets\sa-password"
+
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+
+WORKDIR C:\\Source
+# Create admin user and install the sqlexp
+Run net user admin devops@2019 /add; \
+    net localgroup administrators admin /add ; \
+    .\setup.exe /q /ACTION=Install /INSTANCENAME=SQLEXPRESS /FEATURES=SQLEngine /UPDATEENABLED=0 /SQLSVCACCOUNT='NT AUTHORITY\System' /SQLSYSADMINACCOUNTS='BUILTIN\ADMINISTRATORS' /TCPENABLED=1 /NPENABLED=0 /IACCEPTSQLSERVERLICENSETERMS 
+    
+#change SLQEXP listening port to 1433
+RUN stop-service MSSQL`$SQLEXPRESS ; \
+        set-itemproperty -path 'HKLM:\software\microsoft\microsoft sql server\mssql14.SQLEXPRESS\mssqlserver\supersocketnetlib\tcp\ipall' -name tcpdynamicports -value '' ; \
+        set-itemproperty -path 'HKLM:\software\microsoft\microsoft sql server\mssql14.SQLEXPRESS\mssqlserver\supersocketnetlib\tcp\ipall' -name tcpport -value 1433 ; \
+        set-itemproperty -path 'HKLM:\software\microsoft\microsoft sql server\mssql14.SQLEXPRESS\mssqlserver\' -name LoginMode -value 2 
+    #    Remove-Item -Recurse -Force C:\\Source
+
+
+CMD .\start -sa_password $env:sa_password -ACCEPT_EULA $env:ACCEPT_EULA -attach_dbs \"$env:attach_dbs\" -Verbose
+#CMD Invoke-Sqlcmd -Query "CREATE DATABASE Northwind ON (filename='C:\MSSQL\DATA\northwnd.mdf'),(filename='C:\MSSQL\DATA\northwnd.ldf') FOR ATTACH"
+
+
+#[ {'dbName': 'MaxDb','dbFiles': ['C:\\MSSQL\\DATA\\northwnd.mdf', 'C:\\MSSQL\\DATA\\northwnd.ldf']}]
+#docker run -d --name sqlexptest08 -v C:/MSSQL:c:/MSSQL/DATA  -e attach_dbs="[ {'dbName': 'MaxDb','dbFiles': ['C:\\MSSQL\\DATA\\northwnd.mdf', 'C:\\MSSQL\\DATA\\northwnd.ldf']}]" sqlexptest:v1
